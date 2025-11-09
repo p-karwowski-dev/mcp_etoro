@@ -54,6 +54,7 @@ async def get_instruments(instrument_type: str = None) -> str:
         print("Fetched data successfully.")
     else:
         print(f"Failed to fetch data. Status code: {response.status_code}")
+        return json.dumps({"error": f"Failed to fetch data. Status code: {response.status_code}"})
 
     # Filter instruments by type if instrument_type_id is provided
     if instrument_type_id:
@@ -67,12 +68,18 @@ async def get_instruments(instrument_type: str = None) -> str:
     # Create a simplified list of instruments
     instruments = [
         {
-            "ID": instrument["InstrumentID"],
-            "TypeID": instrument["InstrumentTypeID"],
-            "Name": instrument["InstrumentDisplayName"],
-            "Symbol": instrument["SymbolFull"],
+            "InstrumentID": instrument["InstrumentID"],
+            "InstrumentName": instrument["InstrumentName"],
+            "InstrumentTypeID": instrument["InstrumentTypeID"],
+            "DisplayName": instrument["DisplayName"],
+            "Symbol": instrument["Symbol"],
         }
         for instrument in instruments
     ]
 
     return json.dumps(instruments, indent=2)
+
+if __name__ == "__main__":
+    # Initialize and run the server
+    print("Starting eToro Finance MCP server...")
+    eToro_server.run()
