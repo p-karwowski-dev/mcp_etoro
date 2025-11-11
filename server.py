@@ -20,64 +20,69 @@ Available tools:
     "get_instruments",
     description="""Get list of available financial instruments available for trading on the eToro platform.
     Arguments: 
-    - instrument_type (str, optional): Type of financial instrument to filter by (e.g., "stocks", "cryptocurrencies", "commodities", "forex", "indices"). If not provided or wrong value, returns all instruments.
+    - instrument_type (str, optional): Type of financial instrument to filter by (e.g., "stocks", "cryptocurrencies", "commodities", "forex", "indexes"). If not provided or wrong value, returns all instruments.
     """
 )
 async def get_instruments(instrument_type: str = None) -> str:
-    # InstrumentTypeID Enum
-    class InstrumentTypeID(Enum):
-        FOREX = 1
-        COMMODITIES = 2
-        CRYPTOCURRENCIES = 3
-        STOCKS = 4
-        INDICES = 5
-
-    # Mapping of instrument types to their IDs
-    instrument_type_id = None
-    if instrument_type:
-        instrument_type_mapping = {
-            "forex": InstrumentTypeID.FOREX,
-            "commodities": InstrumentTypeID.COMMODITIES,
-            "cryptocurrencies": InstrumentTypeID.CRYPTOCURRENCIES,
-            "stocks": InstrumentTypeID.STOCKS,
-            "indices": InstrumentTypeID.INDICES,
-        }
-        instrument_type_id = instrument_type_mapping.get(instrument_type.lower())
-
+    
+    instrumentTypeIdMap = {
+        "forex": 1,
+        "commodities": 2,
+        "cryptocurrencies": 3,
+        "stocks": 4,
+        "indexes": 5,
+    }
 
     # Fetch instruments data from eToro API
     url = "https://api.etorostatic.com/sapi/instrumentsmetadata/V1.1/instruments"
-    response = requests.get(url)
-
-    if response.status_code == 200:
+    
+    try:
+        response = requests.get(url, timeout=10)
+        
+        if response.status_code != 200:
+            error_msg = f"Failed to fetch data. Status code: {response.status_code}"
+            print(error_msg)
+            return json.dumps({"error": error_msg})
+        
         data = response.json()
         print("Fetched data successfully.")
-    else:
-        print(f"Failed to fetch data. Status code: {response.status_code}")
-        return json.dumps({"error": f"Failed to fetch data. Status code: {response.status_code}"})
+        
+    except Exception as e:
+        error_msg = f"Error fetching data: {e}"
+        print(error_msg)
+        return json.dumps({"error": error_msg})
 
     # Filter instruments by type if instrument_type_id is provided
-    if instrument_type_id:
+    try:
+        if instrument_type:
+            instruments = [
+                instrument for instrument in data["InstrumentDisplayDatas"]
+                if instrument["InstrumentTypeID"] == instrumentTypeIdMap.get(instrument_type.lower())
+            ]
+        else:
+            instruments = data["InstrumentDisplayDatas"]
+
+        # Create a simplified list of instruments
         instruments = [
-            instrument for instrument in data["InstrumentDisplayDatas"]
-            if instrument["InstrumentTypeID"] == instrument_type_id.value
+            {
+                "InstrumentID": instrument["InstrumentID"],
+                "InstrumentName": instrument["InstrumentDisplayName"],
+                "InstrumentTypeID": instrument["InstrumentTypeID"],
+                "Symbol": instrument["SymbolFull"],
+            }
+            for instrument in instruments
         ]
-    else:
-        instruments = data["InstrumentDisplayDatas"]
-
-    # Create a simplified list of instruments
-    instruments = [
-        {
-            "InstrumentID": instrument["InstrumentID"],
-            "InstrumentName": instrument["InstrumentName"],
-            "InstrumentTypeID": instrument["InstrumentTypeID"],
-            "DisplayName": instrument["DisplayName"],
-            "Symbol": instrument["Symbol"],
-        }
-        for instrument in instruments
-    ]
-
-    return json.dumps(instruments, indent=2)
+        
+        return json.dumps(instruments, indent=2)
+        
+    except KeyError as e:
+        error_msg = f"Missing expected key in API response: {e}"
+        print(error_msg)
+        return json.dumps({"error": error_msg})
+    except Exception as e:
+        error_msg = f"Error processing instruments: {e}"
+        print(error_msg)
+        return json.dumps({"error": error_msg})
 
 if __name__ == "__main__":
     # Initialize and run the server
