@@ -1,7 +1,8 @@
-import json
-import requests
-from enum import Enum
 from mcp.server.fastmcp import FastMCP
+import json
+import os
+import subprocess
+import time
 
 # Initialize FastMCP server
 eToro_server = FastMCP(
@@ -9,7 +10,7 @@ eToro_server = FastMCP(
     instructions="""
 # eToro Finance MCP Server
 
-This server is used to get information about financial instruments available on the platform.
+This server provides information about financial instruments available on the eToro platform.
 
 Available tools:
 - get_instruments : Get list of available financial instruments available for trading on the eToro platform.
@@ -20,69 +21,61 @@ Available tools:
     "get_instruments",
     description="""Get list of available financial instruments available for trading on the eToro platform.
     Arguments: 
-    - instrument_type (str, optional): Type of financial instrument to filter by (e.g., "stocks", "cryptocurrencies", "commodities", "forex", "indexes"). If not provided or wrong value, returns all instruments.
+    - intrument (string, optional): Name or partial name of the financial instrument to filter by.
+    - instrument_type_ID (int, optional): Type of financial instrument to filter by (1=forex, 2=commodities, 3=cryptocurrencies, 4=indexes, 5=stocks). If not provided, returns all instruments.
+    - amount (int, optional): Number of instruments to return per page. Defaults to 10.
+    - page (int, optional): Page number for pagination (starts at 1). Defaults to 1.
     """
 )
-async def get_instruments(instrument_type: str = None) -> str:
+async def get_instruments(instrument: str = None, instrument_type_ID: int = None, amount: int = 10, page: int = 1) -> str:
+    # Load instruments from file
+    # Check if instruments.json exists, if not run getInstruments.py
+    if not os.path.exists('./instruments.json'):
+        subprocess.run(['python', 'getInstruments.py'])
+        time.sleep(2)
     
-    instrumentTypeIdMap = {
-        "forex": 1,
-        "commodities": 2,
-        "cryptocurrencies": 3,
-        "stocks": 4,
-        "indexes": 5,
-    }
-
-    # Fetch instruments data from eToro API
-    url = "https://api.etorostatic.com/sapi/instrumentsmetadata/V1.1/instruments"
+    with open('./instruments.json', 'r') as f:
+        all_instruments = json.load(f)
     
-    try:
-        response = requests.get(url, timeout=10)
-        
-        if response.status_code != 200:
-            error_msg = f"Failed to fetch data. Status code: {response.status_code}"
-            print(error_msg)
-            return json.dumps({"error": error_msg})
-        
-        data = response.json()
-        print("Fetched data successfully.")
-        
-    except Exception as e:
-        error_msg = f"Error fetching data: {e}"
-        print(error_msg)
-        return json.dumps({"error": error_msg})
-
-    # Filter instruments by type if instrument_type_id is provided
-    try:
-        if instrument_type:
+    # Convert dict to list if needed
+    if isinstance(all_instruments, dict):
+        all_instruments = list(all_instruments.values())
+        # Filter by instrument name if provided
+        if instrument:
             instruments = [
-                instrument for instrument in data["InstrumentDisplayDatas"]
-                if instrument["InstrumentTypeID"] == instrumentTypeIdMap.get(instrument_type.lower())
+                inst for inst in all_instruments 
+                if instrument.lower() in inst.get('InstrumentName', '').lower()
             ]
         else:
-            instruments = data["InstrumentDisplayDatas"]
-
-        # Create a simplified list of instruments
-        instruments = [
-            {
-                "InstrumentID": instrument["InstrumentID"],
-                "InstrumentName": instrument["InstrumentDisplayName"],
-                "InstrumentTypeID": instrument["InstrumentTypeID"],
-                "Symbol": instrument["SymbolFull"],
-            }
-            for instrument in instruments
-        ]
+            instruments = all_instruments    
         
-        return json.dumps(instruments, indent=2)
+        # Filter by instrument_type_ID if provided
+        if instrument_type_ID:
+            instruments = [
+                inst for inst in all_instruments 
+                if inst.get('InstrumentTypeID', None) == instrument_type_ID
+            ]
+        else:
+            instruments = all_instruments
         
-    except KeyError as e:
-        error_msg = f"Missing expected key in API response: {e}"
-        print(error_msg)
-        return json.dumps({"error": error_msg})
-    except Exception as e:
-        error_msg = f"Error processing instruments: {e}"
-        print(error_msg)
-        return json.dumps({"error": error_msg})
+        # Calculate pagination
+        total_count = len(instruments)
+        start_index = (page - 1) * amount
+        end_index = start_index + amount    
+        
+        # Get paginated results
+        paginated_instruments = instruments[start_index:end_index]        
+        
+        # Build response with metadata
+        response = {
+            "page": page,
+            "amount": amount,
+            "total_count": total_count,
+            "total_pages": (total_count + amount - 1) // amount,
+            "instruments": paginated_instruments
+        }
+    
+    return json.dumps(response, indent=2)
 
 if __name__ == "__main__":
     # Initialize and run the server
